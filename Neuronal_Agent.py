@@ -25,7 +25,7 @@
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
-
+import tqdm
 from pettingzoo.classic import connect_four_v3
 import numpy as np
 import random
@@ -128,6 +128,7 @@ optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 loss_MAE = tf.keras.losses.MeanAbsoluteError()
 # ******************************************************************************************************************** #
 # Main
+
 if __name__ == "__main__":
     ### Game initialization
     env_4_connect = connect_four_v3.env()
@@ -144,35 +145,62 @@ if __name__ == "__main__":
     win_player_1 = 0
 
     ### Playing the game
-    for i in range(num_epochs):
+    for i in tqdm.tqdm(range(num_epochs)):
+
         ### Game Reset
         env_4_connect.reset()
         positions_player_0 = []
         positions_player_1 = []
+        if i%20 == 0 :
+            player_0.update_random_proportion(random_rate/np.log(i/10))
+            player_1.update_random_proportion(random_rate/np.log(i/10))
 
         ### First Observation
         observations = env_4_connect.last()
         while not(observations[2]) and not(observations[3]):
-            # Player 0 play
-            action = player_0.get_value(observations)
-            env_4_connect.step(action)
+            if i % 2 == 0:
+                # Player 0 play
+                action = player_0.get_value(observations)
+                env_4_connect.step(action)
 
-            # Observation Player 1
-            observations = env_4_connect.last()
+                # Observation Player 1
+                observations = env_4_connect.last()
 
-            # Stock the position
-            positions_player_0.append(observations[0]["observation"])
+                # Stock the position
+                positions_player_0.append(observations[0]["observation"])
 
-            # Player 1 play
-            if not(observations[2]):
+                # Player 1 play
+                if not(observations[2]):
+                    action = player_1.get_value(observations)
+                    env_4_connect.step(action)
+
+                # Observation Player 0
+                observations = env_4_connect.last()
+
+                # Stock the position
+                positions_player_1.append(observations[0]["observation"])
+
+            else:
+                # Player 1 play
                 action = player_1.get_value(observations)
                 env_4_connect.step(action)
 
-            # Observation Player 0
-            observations = env_4_connect.last()
+                # Observation Player 0
+                observations = env_4_connect.last()
 
-            # Stock the position
-            positions_player_1.append(observations[0]["observation"])
+                # Stock the position
+                positions_player_1.append(observations[1]["observation"])
+
+                # Player 0 play
+                if not (observations[3]):
+                    action = player_0.get_value(observations)
+                    env_4_connect.step(action)
+
+                # Observation Player 1
+                observations = env_4_connect.last()
+
+                # Stock the position
+                positions_player_0.append(observations[0]["observation"])
 
         ### Affect the reward
         game_rewards = env_4_connect.rewards
@@ -185,7 +213,8 @@ if __name__ == "__main__":
 
         ### Rewards modulation
 
-
+        game_rewards_player_0 = np.cumsum(game_rewards_player_0)
+        game_rewards_player_1 = np.cumsum(game_rewards_player_1)
 
         ### Neural Network Improvement
 
