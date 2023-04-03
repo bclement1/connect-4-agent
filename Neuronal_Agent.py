@@ -29,6 +29,7 @@ import tqdm
 from pettingzoo.classic import connect_four_v3
 import numpy as np
 import random
+import json
 
 # ******************************************************************************************************************** #
 # Functions definition
@@ -69,35 +70,39 @@ def apply_action(position, action, player):
 # ******************************************************************************************************************** #
 # Actor definition
 class Neuronal_Agent:
-    def __init__(self, num_actions, random_proportion, player):
+    def __init__(
+        self,
+        player,
+        random_proportion=0.3,
+        num_epochs=1000,
+        learning_rate=0.01,
+        name=None,
+        optimizer="Adam",
+        loss="MeanAbsoluteError",
+    ):
         self.network = keras.Sequential(
-                    [
-                        layers.Conv2D(
-                            kernel_size=2,
-                            filters=2,
-                            padding='same',
-                            strides=(1, 1),
-                            activation="relu",
-                            name="Conv1"
-                        ),
-                        layers.Conv2D(
-                            kernel_size=2,
-                            filters=2,
-                            padding='same',
-                            strides=(1, 1),
-                            activation="relu",
-                            name="Conv2"
-                        ),
-                        layers.MaxPool2D(),
-                        layers.Flatten(),
-                        layers.Dense(4, activation="relu", name="dense1"),
-                        layers.Dense(1, name="dense2"),
-                    ]
-                )
-        self.random_proportion = random_proportion
+            [
+                layers.Conv2D(
+                    kernel_size=2, filters=2, padding="same", strides=(1, 1), activation="relu", name="Conv1"
+                ),
+                layers.Conv2D(
+                    kernel_size=2, filters=2, padding="same", strides=(1, 1), activation="relu", name="Conv2"
+                ),
+                layers.MaxPool2D(),
+                layers.Flatten(),
+                layers.Dense(4, activation="relu", name="dense1"),
+                layers.Dense(1, name="dense2"),
+            ]
+        )
         self.player = player
+        self.random_proportion = random_proportion
+        self.name = name
+        self.num_epochs = (num_epochs,)
+        self.learning_rate = (learning_rate,)
+        self.optimizer = (optimizer,)
+        self.loss = (loss,)
 
-    def update_random_proportion(self,random_proportion):
+    def update_random_proportion(self, random_proportion):
         self.random_proportion = random_proportion
 
     def get_value(self, observation):
@@ -112,12 +117,36 @@ class Neuronal_Agent:
             new_score = -np.inf
             for action in actions:
                 next_position = apply_action(position, action, self.player)
-                next_position =  np.expand_dims(next_position, axis=0)
+                next_position = np.expand_dims(next_position, axis=0)
                 next_position_score = self.network(next_position)
                 if (next_position_score - position_score) > new_score:
                     next_action = action
                     new_score = next_position_score - position_score
             return next_action
+
+    def save(self, path):
+        params = {}
+        params["player"] = self.player
+        params["random_proportion"] = self.random_proportion
+        params["name"] = self.name
+        params["num_epochs"] = self.num_epochs
+        params["learning_rate"] = self.learning_rate
+        params["optimizer"] = self.optimizer
+        params["loss"] = self.loss
+        with open(path+"params.json", "w") as write_file:
+            json.dump(params, write_file, indent=4)
+        self.network.save(path+"model.model")
+
+    def load(self, path):
+        self.network = tf.keras.models.load_model(path+"model.model")
+        file = open(path)
+        params = json.load(file)
+        self.player = params.get("player")
+        self.loss = params.get("loss")
+        self.optimizer = params.get("optimizer")
+        self.learning_rate = params.get("learning_rate")
+        self.num_epochs = params.get("num_epochs")
+        self.random_proportion = params.get("random_proportion")
 
 # ******************************************************************************************************************** #
 # Configuration
@@ -132,12 +161,24 @@ loss_MAE = tf.keras.losses.MeanAbsoluteError()
 if __name__ == "__main__":
     ### Game initialization
     env_4_connect = connect_four_v3.env()
-    player_0 = Neuronal_Agent(num_actions=7,
-                              random_proportion=random_rate,
-                              player=0)
-    player_1 = Neuronal_Agent(num_actions=7,
-                              random_proportion=random_rate,
-                              player=1)
+    player_0 = Neuronal_Agent(
+        name="Player_0",
+        random_proportion=random_rate,
+        player=0,
+        num_epochs=num_epochs,
+        learning_rate=learning_rate,
+        optimizer="Adam",
+        loss="MeanAbsoluteError",
+    )
+    player_1 = Neuronal_Agent(
+        name="Player_1",
+        random_proportion=random_rate,
+        player=1,
+        num_epochs=num_epochs,
+        learning_rate=learning_rate,
+        optimizer="Adam",
+        loss="MeanAbsoluteError",
+    )
 
     player_0.network.build([1, 6, 7, 2])
     player_1.network.build([1, 6, 7, 2])
@@ -151,13 +192,13 @@ if __name__ == "__main__":
         env_4_connect.reset()
         positions_player_0 = []
         positions_player_1 = []
-        if i%20 == 0 :
-            player_0.update_random_proportion(random_rate/np.log(i/10))
-            player_1.update_random_proportion(random_rate/np.log(i/10))
+        if i % 20 == 0:
+            player_0.update_random_proportion(random_rate / np.log(i / 10))
+            player_1.update_random_proportion(random_rate / np.log(i / 10))
 
         ### First Observation
         observations = env_4_connect.last()
-        while not(observations[2]) and not(observations[3]):
+        while not (observations[2]) and not (observations[3]):
             if i % 2 == 0:
                 # Player 0 play
                 action = player_0.get_value(observations)
@@ -170,7 +211,7 @@ if __name__ == "__main__":
                 positions_player_0.append(observations[0]["observation"])
 
                 # Player 1 play
-                if not(observations[2]):
+                if not (observations[2]):
                     action = player_1.get_value(observations)
                     env_4_connect.step(action)
 
@@ -204,8 +245,8 @@ if __name__ == "__main__":
 
         ### Affect the reward
         game_rewards = env_4_connect.rewards
-        game_rewards_player_0 = np.full(len(positions_player_0),game_rewards["player_0"])
-        game_rewards_player_1 = np.full(len(positions_player_1),game_rewards["player_1"])
+        game_rewards_player_0 = np.full(len(positions_player_0), game_rewards["player_0"])
+        game_rewards_player_1 = np.full(len(positions_player_1), game_rewards["player_1"])
         if game_rewards["player_0"] == 1:
             win_player_0 += 1
         if game_rewards["player_1"] == 1:
@@ -246,9 +287,8 @@ if __name__ == "__main__":
             gradients = tape.gradient(loss, player_1.network.trainable_weights)
             optimizer.apply_gradients(zip(gradients, player_1.network.trainable_weights))
 
-
-        if i%10 == 0 :
-            print("Epochs :",i)
-            print("win_player_0 :",win_player_0)
-            print("win_player_1 :",win_player_1)
+        if i % 10 == 0:
+            print("Epochs :", i)
+            print("win_player_0 :", win_player_0)
+            print("win_player_1 :", win_player_1)
             print()
