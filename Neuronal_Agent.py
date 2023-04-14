@@ -30,7 +30,7 @@ from pettingzoo.classic import connect_four_v3
 import numpy as np
 import random
 import json
-
+import os
 # ******************************************************************************************************************** #
 # Functions definition
 
@@ -125,6 +125,7 @@ class Neuronal_Agent:
             return next_action
 
     def save(self, path):
+        os.makedirs(path,exist_ok=True)
         params = {}
         params["player"] = self.player
         params["random_proportion"] = self.random_proportion
@@ -139,7 +140,7 @@ class Neuronal_Agent:
 
     def load(self, path):
         self.network = tf.keras.models.load_model(path+"model.model")
-        file = open(path)
+        file = open(path+"params.json")
         params = json.load(file)
         self.player = params.get("player")
         self.loss = params.get("loss")
@@ -150,7 +151,7 @@ class Neuronal_Agent:
 
 # ******************************************************************************************************************** #
 # Configuration
-num_epochs = 100
+num_epochs = 3000
 learning_rate = 0.01
 random_rate = 0.3
 optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
@@ -192,7 +193,7 @@ if __name__ == "__main__":
         env_4_connect.reset()
         positions_player_0 = []
         positions_player_1 = []
-        if i % 20 == 0:
+        if i % 20 == 0 and i>0 :
             player_0.update_random_proportion(random_rate / np.log(i / 10))
             player_1.update_random_proportion(random_rate / np.log(i / 10))
 
@@ -230,10 +231,10 @@ if __name__ == "__main__":
                 observations = env_4_connect.last()
 
                 # Stock the position
-                positions_player_1.append(observations[1]["observation"])
+                positions_player_1.append(observations[0]["observation"])
 
                 # Player 0 play
-                if not (observations[3]):
+                if not (observations[2]):
                     action = player_0.get_value(observations)
                     env_4_connect.step(action)
 
@@ -288,7 +289,9 @@ if __name__ == "__main__":
             optimizer.apply_gradients(zip(gradients, player_1.network.trainable_weights))
 
         if i % 10 == 0:
+            print()
             print("Epochs :", i)
             print("win_player_0 :", win_player_0)
             print("win_player_1 :", win_player_1)
             print()
+    player_0.save("player_3000/")
